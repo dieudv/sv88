@@ -15,6 +15,10 @@ def append_to_excel(filepath, df):
         # File chưa tồn tại → ghi mới
         df.to_excel(filepath, index=False)
     else:
+        if file_has_final(filepath):
+            print(f"Bỏ qua vì đã có dòng 'Chung cuộc' trong {filepath}")
+            return
+        
         # Mở workbook và tính số dòng đang có
         book = load_workbook(filepath)
         sheet = book.active
@@ -24,8 +28,44 @@ def append_to_excel(filepath, df):
         with pd.ExcelWriter(filepath, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
             df.to_excel(writer, index=False, header=False, startrow=start_row)
 
+def file_has_final(filepath):
+    try:
+        df_old = pd.read_excel(filepath)
+        return "Chung cuộc" in df_old["Thời điểm"].values
+    except:
+        return False
+
 def sanitize_filename(s):
     return re.sub(r'[\\/*?:"<>|]', "_", s).replace(" ", "_")
+
+def get_time_label(match_time_str):
+    match_time = datetime.strptime(match_time_str, "%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.utcnow()
+    delta = match_time - now
+
+    if delta > timedelta(minutes=15):
+        return now.strftime("%H:%M")
+    elif timedelta(minutes=-150) < delta <= timedelta(minutes=15):
+        return "Trước trận"
+    else:
+        return "Chung cuộc"
+
+
+def get_time_and_score(match_time_str, match):
+    match_time = datetime.strptime(match_time_str, "%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.utcnow()
+    delta = match_time - now
+
+    if delta > timedelta(minutes=15):
+        return now.strftime("%H:%M"), "-"
+    elif timedelta(minutes=-150) < delta <= timedelta(minutes=15):
+        return "Trước trận", "-"
+    else:
+        # Trận đã diễn ra hoặc kết thúc
+        score = match.get("4", {})
+        home_score = score.get("0", 0)
+        away_score = score.get("1", 0)
+        return "Chung cuộc", f"{home_score}-{away_score}"
 
 def extract_odds(odds_list):
     if not odds_list:
@@ -63,20 +103,10 @@ for comp in competitions:
             continue
 
         try:
-            match_time_str = match.get("0", "")
-            match_time = datetime.strptime(match_time_str, "%Y-%m-%dT%H:%M:%SZ")
-            now = datetime.utcnow()
-
-            # Gán thời điểm
-            delta = match_time - now
-            if timedelta(minutes=0) < delta <= timedelta(minutes=15):
-                time_label = "Trước trận"
-            else:
-                time_label = now.strftime("%H:%M")
+            time_label, score = get_time_and_score(match.get("0", ""), match)
 
             home = match.get("2", "Home")
             away = match.get("3", "Away")
-            score = f"{match.get('4', {}).get('0', 0)}-{match.get('4', {}).get('1', 0)}"
             odds = match.get("7", {})
 
             odds_1x2 = extract_odds(odds.get("1", []))
