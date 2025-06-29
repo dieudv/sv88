@@ -1,26 +1,53 @@
 import json
 import pandas as pd
 import os
-from datetime import datetime
 import re
+from datetime import datetime, timedelta
+from openpyxl import load_workbook
 
-# Tạo thư mục lưu kết quả nếu chưa có
+# Tạo thư mục xuất
 os.makedirs("matches", exist_ok=True)
 
+def append_to_excel(filepath, df):
+    from openpyxl import load_workbook
+
+    if not os.path.exists(filepath):
+        # File chưa tồn tại → ghi mới
+        df.to_excel(filepath, index=False)
+    else:
+        # Mở workbook và tính số dòng đang có
+        book = load_workbook(filepath)
+        sheet = book.active
+        start_row = sheet.max_row
+
+        # Ghi thêm từ dòng tiếp theo
+        with pd.ExcelWriter(filepath, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+            df.to_excel(writer, index=False, header=False, startrow=start_row)
+
 def sanitize_filename(s):
-    # Loại bỏ ký tự không hợp lệ trong tên file
     return re.sub(r'[\\/*?:"<>|]', "_", s).replace(" ", "_")
 
 def extract_odds(odds_list):
     if not odds_list:
         return None, None, None
     try:
-        first = odds_list[0].split()
-        return first[0], first[1].split("*")[0], first[2].split("*")[0]
-    except:
+        text = odds_list[0]
+        # Regex tìm giá trị + hậu tố
+        matches = re.findall(r'([\d\.]+)\*\d+h|([\d\.]+)\*\d+a|([\d\.]+)\*\d+d', text)
+        home = away = draw = None
+        for h, a, d in matches:
+            if h:
+                home = h
+            if a:
+                away = a
+            if d:
+                draw = d
+        return home, away, draw
+    except Exception as e:
+        print(f"Lỗi extract_odds: {e}")
         return None, None, None
 
-# Load JSON từ file
+# Load dữ liệu JSON
 with open("data.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
@@ -31,9 +58,22 @@ for comp in competitions:
     matches = comp.get("2", [])
 
     for match in matches:
+        # Bỏ kèo phụ
+        if "16" in match or match.get("17", False):
+            continue
+
         try:
-            match_time = match.get("0", "")
-            time_str = match_time[11:16]
+            match_time_str = match.get("0", "")
+            match_time = datetime.strptime(match_time_str, "%Y-%m-%dT%H:%M:%SZ")
+            now = datetime.utcnow()
+
+            # Gán thời điểm
+            delta = match_time - now
+            if timedelta(minutes=0) < delta <= timedelta(minutes=15):
+                time_label = "Trước trận"
+            else:
+                time_label = now.strftime("%H:%M")
+
             home = match.get("2", "Home")
             away = match.get("3", "Away")
             score = f"{match.get('4', {}).get('0', 0)}-{match.get('4', {}).get('1', 0)}"
@@ -44,11 +84,8 @@ for comp in competitions:
             hc = extract_odds(odds.get("5", []))
 
             row = {
-                "Giải đấu": comp_name,
-                "Thời điểm": time_str,
+                "Thời điểm": time_label,
                 "Tỉ số": score,
-                "Đội nhà": home,
-                "Đội khách": away,
                 "Kèo chấp": hc[0],
                 "Odds Real": hc[1],
                 "Odds Pachuca": hc[2],
@@ -61,10 +98,9 @@ for comp in competitions:
             }
 
             df = pd.DataFrame([row])
-
-            # Tạo tên file: "Giải đấu - Đội A vs Đội B.xlsx"
             filename = sanitize_filename(f"{comp_name} - {home} vs {away}.xlsx")
             filepath = os.path.join("matches", filename)
-            df.to_excel(filepath, index=False)
+            append_to_excel(filepath, df)
+
         except Exception as e:
-            print(f"Lỗi trận đấu giữa {match.get('2')} và {match.get('3')}: {e}")
+            print(f"Lỗi trận {match.get('2')} vs {match.get('3')}: {e}")
