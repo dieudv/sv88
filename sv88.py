@@ -1,9 +1,18 @@
 import json
 import pandas as pd
+import requests
 import os
 import re
 from datetime import datetime, timedelta
 from openpyxl import load_workbook
+from datetime import timezone
+
+API_URL = "https://be.sb21.net/api/v2/getEvent?timeRange=today&sportType=1_1&sportId=1&oddsStyle=ma&pinLeague=false"
+HEADERS = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "lng": "vi"
+}
 
 # Tạo thư mục xuất
 os.makedirs("matches", exist_ok=True)
@@ -38,34 +47,29 @@ def file_has_final(filepath):
 def sanitize_filename(s):
     return re.sub(r'[\\/*?:"<>|]', "_", s).replace(" ", "_")
 
-def get_time_label(match_time_str):
-    match_time = datetime.strptime(match_time_str, "%Y-%m-%dT%H:%M:%SZ")
-    now = datetime.utcnow()
-    delta = match_time - now
-
-    if delta > timedelta(minutes=15):
-        return now.strftime("%H:%M")
-    elif timedelta(minutes=-150) < delta <= timedelta(minutes=15):
-        return "Trước trận"
-    else:
-        return "Chung cuộc"
-
+def parse_utc_time(iso_string):
+    return datetime.strptime(iso_string, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 def get_time_and_score(match_time_str, match):
-    match_time = datetime.strptime(match_time_str, "%Y-%m-%dT%H:%M:%SZ")
-    now = datetime.utcnow()
+    match_time = parse_utc_time(match_time_str)
+    now = datetime.now(timezone.utc)
     delta = match_time - now
 
     if delta > timedelta(minutes=15):
         return now.strftime("%H:%M"), "-"
-    elif timedelta(minutes=-150) < delta <= timedelta(minutes=15):
+    elif timedelta(minutes=0) <= delta <= timedelta(minutes=15):
         return "Trước trận", "-"
-    else:
-        # Trận đã diễn ra hoặc kết thúc
+    elif delta > timedelta(minutes=-150):
+        # Trận đang diễn ra → tính phút
+        minutes_played = int((now - match_time).total_seconds() // 60)
+        hours = minutes_played // 60
+        minutes = minutes_played % 60
+        time_str = f"{hours}H {minutes}'" if hours else f"{minutes}'"
         score = match.get("4", {})
-        home_score = score.get("0", 0)
-        away_score = score.get("1", 0)
-        return "Chung cuộc", f"{home_score}-{away_score}"
+        return time_str, f"{score.get('0', 0)}-{score.get('1', 0)}"
+    else:
+        score = match.get("4", {})
+        return "Chung cuộc", f"{score.get('0', 0)}-{score.get('1', 0)}"
 
 def extract_odds(odds_list):
     if not odds_list:
@@ -87,11 +91,12 @@ def extract_odds(odds_list):
         print(f"Lỗi extract_odds: {e}")
         return None, None, None
 
-# Load dữ liệu JSON
-with open("data.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-competitions = data[0]
+try:
+    response = requests.get(API_URL, headers=HEADERS)
+    response.raise_for_status()
+    competitions = response.json()[0]
+except Exception as e:
+    print(f"[ERROR] Không thể lấy dữ liệu từ API: {e}")    
 
 for comp in competitions:
     comp_name = comp.get("1", "UnknownLeague")
