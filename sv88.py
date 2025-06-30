@@ -98,7 +98,8 @@ try:
     response = requests.get(API_URL, headers=HEADERS)
     response.raise_for_status()
     data = response.json()
-    competitions = response.json()[0]
+    competitions = data[0]
+    competitions.extend(data[1])
     with open('data.json', 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 except Exception as e:
