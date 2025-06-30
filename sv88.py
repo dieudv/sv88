@@ -3,47 +3,19 @@ import pandas as pd
 import requests
 import os
 import re
-from datetime import datetime, timedelta
-from openpyxl import load_workbook
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 
+# === Cấu hình ===
 API_URL = "https://be.sb21.net/api/v2/getEvent?timeRange=today&sportType=1_1&sportId=1&oddsStyle=ma&pinLeague=false"
 HEADERS = {
     "accept": "application/json",
     "content-type": "application/json",
     "lng": "vi"
 }
+OUTPUT_DIR = "matches"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Tạo thư mục xuất
-os.makedirs("matches", exist_ok=True)
-
-def append_to_excel(filepath, df):
-    from openpyxl import load_workbook
-
-    if not os.path.exists(filepath):
-        # File chưa tồn tại → ghi mới
-        df.to_excel(filepath, index=False)
-    else:
-        if file_has_final(filepath):
-            print(f"Bỏ qua vì đã có dòng 'Chung cuộc' trong {filepath}")
-            return
-        
-        # Mở workbook và tính số dòng đang có
-        book = load_workbook(filepath)
-        sheet = book.active
-        start_row = sheet.max_row
-
-        # Ghi thêm từ dòng tiếp theo
-        with pd.ExcelWriter(filepath, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-            df.to_excel(writer, index=False, header=False, startrow=start_row)
-
-def file_has_final(filepath):
-    try:
-        df_old = pd.read_excel(filepath)
-        return "Chung cuộc" in df_old["Thời điểm"].values
-    except:
-        return False
-
+# === Hàm tiện ích ===
 def sanitize_filename(s):
     return re.sub(r'[\\/*?:"<>|]', "_", s).replace(" ", "_")
 
@@ -60,7 +32,6 @@ def get_time_and_score(match_time_str, match):
     elif timedelta(minutes=0) <= delta <= timedelta(minutes=15):
         return "Trước trận", "-"
     elif delta > timedelta(minutes=-150):
-        # Trận đang diễn ra → tính phút
         minutes_played = int((now - match_time).total_seconds() // 60)
         hours = minutes_played // 60
         minutes = minutes_played % 60
@@ -76,40 +47,55 @@ def extract_odds(odds_list):
         return None, None, None
     try:
         text = odds_list[0]
-        # Regex tìm giá trị + hậu tố
         matches = re.findall(r'([\d\.]+)\*\d+h|([\d\.]+)\*\d+a|([\d\.]+)\*\d+d', text)
         home = away = draw = None
         for h, a, d in matches:
-            if h:
-                home = h
-            if a:
-                away = a
-            if d:
-                draw = d
+            if h: home = h
+            if a: away = a
+            if d: draw = d
         return home, away, draw
     except Exception as e:
         print(f"Lỗi extract_odds: {e}")
         return None, None, None
 
+def file_has_final_csv(filepath):
+    try:
+        if not os.path.exists(filepath):
+            return False
+        df_old = pd.read_csv(filepath)
+        return "Chung cuộc" in df_old["Thời điểm"].values
+    except:
+        return False
+
+def append_to_csv(filepath, df):
+    if not os.path.exists(filepath):
+        df.to_csv(filepath, index=False, mode='w', encoding='utf-8-sig')
+    else:
+        if file_has_final_csv(filepath):
+            print(f"[SKIP] {filepath} đã có dòng 'Chung cuộc'")
+            return
+        df.to_csv(filepath, index=False, header=False, mode='a', encoding='utf-8-sig')
+
+# === Gọi API ===
 try:
     response = requests.get(API_URL, headers=HEADERS)
     response.raise_for_status()
     competitions = response.json()[0]
 except Exception as e:
-    print(f"[ERROR] Không thể lấy dữ liệu từ API: {e}")    
+    print(f"[ERROR] Không thể lấy dữ liệu từ API: {e}")
+    competitions = []
 
+# === Xử lý từng trận ===
 for comp in competitions:
     comp_name = comp.get("1", "UnknownLeague")
     matches = comp.get("2", [])
 
     for match in matches:
-        # Bỏ kèo phụ
         if "16" in match or match.get("17", False):
             continue
 
         try:
             time_label, score = get_time_and_score(match.get("0", ""), match)
-
             home = match.get("2", "Home")
             away = match.get("3", "Away")
             odds = match.get("7", {})
@@ -133,9 +119,9 @@ for comp in competitions:
             }
 
             df = pd.DataFrame([row])
-            filename = sanitize_filename(f"{comp_name} - {home} vs {away}.xlsx")
-            filepath = os.path.join("matches", filename)
-            append_to_excel(filepath, df)
+            filename = sanitize_filename(f"{comp_name} - {home} vs {away}.csv")
+            filepath = os.path.join(OUTPUT_DIR, filename)
+            append_to_csv(filepath, df)
 
         except Exception as e:
-            print(f"Lỗi trận {match.get('2')} vs {match.get('3')}: {e}")
+            print(f"[ERROR] Trận {match.get('2')} vs {match.get('3')}: {e}")
