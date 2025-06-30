@@ -23,24 +23,40 @@ def parse_utc_time(iso_string):
     return datetime.strptime(iso_string, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 def get_time_and_score(match_time_str, match):
-    match_time = parse_utc_time(match_time_str)
-    now = datetime.now(timezone.utc)
-    delta = match_time - now
+    from datetime import datetime, timezone
 
-    if delta > timedelta(minutes=15):
+    now = datetime.now(timezone.utc)
+    match_time = parse_utc_time(match_time_str)
+    delta = now - match_time
+
+    score = match.get("4", {})
+    home_score = score.get("0", 0)
+    away_score = score.get("1", 0)
+    hi1_home = score.get("5", 0)
+    hi1_away = score.get("6", 0)
+    score_str = f"{home_score}-{away_score}"
+
+    minute_in_half = int(match.get("6", 0) / 1000 / 60)
+    hi1_played = hi1_home + hi1_away > 0
+    match_started = delta >= timedelta(seconds=0)
+
+    # Trận chưa bắt đầu
+    if delta < timedelta(minutes=-15):
         return now.strftime("%H:%M"), "-"
-    elif timedelta(minutes=0) <= delta <= timedelta(minutes=15):
+    elif timedelta(minutes=-15) <= delta < timedelta(seconds=0):
         return "Trước trận", "-"
-    elif delta > timedelta(minutes=-150):
-        minutes_played = int((now - match_time).total_seconds() // 60)
-        hours = minutes_played // 60
-        minutes = minutes_played % 60
-        time_str = f"{hours}H {minutes}'" if hours else f"{minutes}'"
-        score = match.get("4", {})
-        return time_str, f"{score.get('0', 0)}-{score.get('1', 0)}"
+
+    # Trận đã bắt đầu nhưng phút hiệp là 0 → vẫn xem là 0'
+    if not hi1_played:
+        if minute_in_half <= 45:
+            return f"1H {minute_in_half}'", score_str
+        else:
+            return "Hết H1", score_str
     else:
-        score = match.get("4", {})
-        return "Chung cuộc", f"{score.get('0', 0)}-{score.get('1', 0)}"
+        if minute_in_half <= 50:
+            return f"2H {minute_in_half}'", score_str
+        else:
+            return "Chung cuộc", score_str
 
 def extract_odds(odds_list):
     if not odds_list:
@@ -64,7 +80,8 @@ def file_has_final_csv(filepath):
             return False
         df_old = pd.read_csv(filepath)
         return "Chung cuộc" in df_old["Thời điểm"].values
-    except:
+    except Exception as e:
+        print(f"[ERROR] Lỗi kiểm tra file {filepath}: {e}")
         return False
 
 def append_to_csv(filepath, df):
@@ -80,7 +97,10 @@ def append_to_csv(filepath, df):
 try:
     response = requests.get(API_URL, headers=HEADERS)
     response.raise_for_status()
+    data = response.json()
     competitions = response.json()[0]
+    with open('data.json', 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 except Exception as e:
     print(f"[ERROR] Không thể lấy dữ liệu từ API: {e}")
     competitions = []
