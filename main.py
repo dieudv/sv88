@@ -209,7 +209,7 @@ for comp in competitions:
         filename = sanitize_filename(f"{local_time_str}_{comp_name} - {home} vs {away}.csv")
         filepath = os.path.join("sv88", filename)
 
-        time_label = get_time_label(match.get("0"), match)
+        time_label = now_utc.astimezone().strftime("%H:%M")
         score = match.get("4", {})
         score_str = f"{score.get('0', 0)} - {score.get('1', 0)}"
 
