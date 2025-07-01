@@ -233,13 +233,17 @@ for comp in competitions:
 
         last_row = read_last_row(filepath)
         if should_log(new_row, last_row):
-            with open(filepath, 'a', encoding='utf-8-sig', newline='') as f:
-                writer = csv.writer(f)
-                if os.path.getsize(filepath) == 0:
-                    writer.writerow([
-                        "Thời gian", "Kèo chấp đội trên", "Odds đội trên",
-                        "Kèo chấp đội dưới", "Odds đội dưới", "Tài/Xỉu", "Odds Tài",
-                        "Odds Xỉu", "1X2 - 1", "1X2 - X", "1X2 - 2"
-                    ])
+            try:
+                with open(filepath, 'a', encoding='utf-8-sig', newline='') as f:
+                    writer = csv.writer(f)
+                    if os.path.getsize(filepath) == 0:
+                        writer.writerow([
+                            "Thời gian", "Kèo chấp đội trên", "Odds đội trên",
+                            "Kèo chấp đội dưới", "Odds đội dưới", "Tài/Xỉu", "Odds Tài",
+                            "Odds Xỉu", "1X2 - 1", "1X2 - X", "1X2 - 2"
+                        ])
 
-                writer.writerow(new_row)
+                    writer.writerow(new_row)
+            except Exception as e:
+                print(f"Error writing to file {filepath}: {e}")
+                print(f"Vui lòng đóng file {filepath} nếu đang mở.")
