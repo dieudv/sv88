@@ -173,11 +173,10 @@ def normalize_handicap_string(hdc: str) -> str:
         inner = hdc[2:-1]
         if "-" in inner:
             return f"'-(%s)" % inner
-        try:
-            num = float(inner)
-            return str(int(num)) if num.is_integer() else str(num)
-        except:
-            return f"'-(%s)" % inner
+        else:
+            if inner == "0.0":
+                return "0"
+            return f"-{inner}"
 
     try:
         num = float(hdc)
