@@ -35,23 +35,87 @@ def extract_odds_from_text(text):
     return home, away, draw
 
 
+def format_handicap(hd):
+    try:
+        val = float(hd)
+    except:
+        return hd
+
+    if val * 4 != int(val * 4):
+        return hd  # không đúng format, giữ nguyên
+
+    parts = {
+        0.25: "0-0.5",
+        0.75: "0.5-1",
+        1.25: "1-1.5",
+        1.75: "1.5-2",
+        2.25: "2-2.5",
+        2.75: "2.5-3",
+        3.25: "3-3.5",
+        3.75: "3.5-4",
+        4.25: "4-4.5",
+        4.75: "4.5-5",
+        5.25: "5-5.5",
+        5.75: "5.5-6"
+    }
+
+    if val in parts:
+        return parts[val]
+    return str(val)
+
+
+def parse_handicap_and_odds_with_side_fixed(odds_list):
+    if not odds_list:
+        return None, None, None, None
+    try:
+        text = odds_list[0]
+        parts = text.split()
+        if len(parts) < 2:
+            return None, None, None, None
+
+        raw_float = float(parts[0])
+        raw_handicap = format_handicap(raw_float)
+
+        home_odds_match = re.search(r'([-\d.]+)\*\d+h', text)
+        away_odds_match = re.search(r'([-\d.]+)\*\d+a', text)
+        side = parts[-3] if parts[-3] in ["h", "a"] else None  # lấy 'h' hoặc 'a'
+
+        home_odds = float(home_odds_match.group(1)) if home_odds_match else None
+        away_odds = float(away_odds_match.group(1)) if away_odds_match else None
+
+        if side == "h":
+            handicap_top = raw_handicap
+            handicap_bottom = f"-({raw_handicap})"
+        elif side == "a":
+            handicap_top = f"-({raw_handicap})"
+            handicap_bottom = raw_handicap
+        else:
+            handicap_top = raw_handicap
+            handicap_bottom = f"-({raw_handicap})"
+
+        return handicap_top, home_odds, handicap_bottom, away_odds
+    except Exception as e:
+        print(f"[parse_handicap_and_odds_with_side_fixed ERROR] {e}")
+        return None, None, None, None
+
+
 def extract_handicap_and_odds(odds_list):
     if not odds_list:
         return None, None, None, None
     try:
         text = odds_list[0]
         parts = text.split()
-        handicap = parts[0]
+        handicap_str = parts[0]  # giữ nguyên dạng chuỗi
+
         home_odds = re.findall(r'([-\d.]+)\*\d+h', text)
         away_odds = re.findall(r'([-\d.]+)\*\d+a', text)
         home = float(home_odds[0]) if home_odds else None
         away = float(away_odds[0]) if away_odds else None
 
-        # Đội dưới là âm của handicap nếu là dạng số, còn nếu là dạng 0-0.5 thì thêm dấu trừ
-        under_handicap = (
-            f"-{handicap}" if not str(handicap).startswith('-') else str(handicap).replace("-", "")
-        )
-        return handicap, home, under_handicap, away
+        # đội dưới có kèo âm, biểu diễn là -(handicap)
+        under_handicap = f"-({handicap_str})"
+
+        return handicap_str, home, under_handicap, away
     except:
         return None, None, None, None
 
@@ -119,8 +183,8 @@ for comp in competitions:
 
         odds = match.get("7", {})
 
-        hc = extract_handicap_and_odds(odds.get("5", []))
-        ou = extract_handicap_and_odds(odds.get("3", []))
+        hc = parse_handicap_and_odds_with_side_fixed(odds.get("5", []))
+        ou = parse_handicap_and_odds_with_side_fixed(odds.get("3", []))
         _1x2 = extract_odds_from_text(odds.get("1", [""])[0]) if "1" in odds else (None, None, None)
 
         # check all elements not empty
@@ -147,4 +211,3 @@ for comp in competitions:
                     ])
 
                 writer.writerow(new_row)
-                break
