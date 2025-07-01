@@ -172,9 +172,16 @@ for comp in competitions:
         if "16" in match or match.get("17", False):
             continue
 
+        match_time_utc = parse_utc_time(match.get("0", ""))
+        now_utc = datetime.now(timezone.utc)
+
+        # Bỏ qua nếu trận chưa diễn ra và còn hơn 6 tiếng mới bắt đầu
+        if match_time_utc - now_utc > timedelta(hours=6):
+            continue
+
         home = match.get("2", "home")
         away = match.get("3", "away")
-        match_time_utc = parse_utc_time(match.get("0", ""))
+
         local_time_str = match_time_utc.astimezone().strftime("%Y%m%d_%H%M")
         filename = sanitize_filename(f"{local_time_str}_{comp_name} - {home} vs {away}.csv")
         filepath = os.path.join("matches", filename)
