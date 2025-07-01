@@ -11,7 +11,7 @@ HEADERS = {
     "lng": "vi"
 }
 
-os.makedirs("matches", exist_ok=True)
+os.makedirs("sv88", exist_ok=True)
 
 
 def sanitize_filename(s):
@@ -208,7 +208,7 @@ for comp in competitions:
 
         local_time_str = match_time_utc.astimezone().strftime("%Y%m%d_%H%M")
         filename = sanitize_filename(f"{local_time_str}_{comp_name} - {home} vs {away}.csv")
-        filepath = os.path.join("matches", filename)
+        filepath = os.path.join("sv88", filename)
 
         time_label = get_time_label(match.get("0"), match)
         score = match.get("4", {})
