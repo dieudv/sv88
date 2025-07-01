@@ -162,6 +162,30 @@ def should_log(new_row, last_row):
         return True
 
 
+def normalize_handicap_string(hdc: str) -> str:
+    if not hdc:
+        return ""
+
+    if "-" in hdc and not hdc.startswith("-") and not hdc.startswith("(-"):
+        return f"'{hdc}"
+
+    if hdc.startswith("-(") and hdc.endswith(")"):
+        inner = hdc[2:-1]
+        if "-" in inner:
+            return f"'-(%s)" % inner
+        try:
+            num = float(inner)
+            return str(int(num)) if num.is_integer() else str(num)
+        except:
+            return f"'-(%s)" % inner
+
+    try:
+        num = float(hdc)
+        return str(int(num)) if num.is_integer() else str(num)
+    except:
+        return hdc
+
+
 response = requests.get(API_URL, headers=HEADERS)
 data = response.json()
 competitions = data[0] + data[1]
@@ -202,20 +226,20 @@ for comp in competitions:
 
         new_row = [
             time_label,
-            hc[0], hc[1],  # kèo chấp trên, odds trên
-            hc[2], hc[3],  # kèo chấp dưới, odds dưới
-            ou[0], ou[1], ou[3],  # T/X, odds tài, odds xỉu
+            normalize_handicap_string(hc[0]), hc[1],  # kèo chấp trên, odds trên
+            normalize_handicap_string(hc[2]), hc[3],  # kèo chấp dưới, odds dưới
+            normalize_handicap_string(ou[0]), ou[1], ou[3],  # T/X, odds tài, odds xỉu
             _1x2[0], _1x2[2], _1x2[1]  # 1X2 - 1, X, 2
         ]
 
         last_row = read_last_row(filepath)
         if should_log(new_row, last_row):
-            with open(filepath, 'a', encoding='utf-8', newline='') as f:
+            with open(filepath, 'a', encoding='utf-8-sig', newline='') as f:
                 writer = csv.writer(f)
                 if os.path.getsize(filepath) == 0:
                     writer.writerow([
-                        "Thời gian", "Kèo chấp (tên đội trên)", "Odds (đội trên)",
-                        "Kèo chấp (tên đội dưới)", "Odds (đội dưới)", "Tài/Xỉu", "Odds Tài",
+                        "Thời gian", "Kèo chấp đội trên", "Odds đội trên",
+                        "Kèo chấp đội dưới", "Odds đội dưới", "Tài/Xỉu", "Odds Tài",
                         "Odds Xỉu", "1X2 - 1", "1X2 - X", "1X2 - 2"
                     ])
 
