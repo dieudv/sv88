@@ -174,7 +174,9 @@ for comp in competitions:
 
         home = match.get("2", "home")
         away = match.get("3", "away")
-        filename = sanitize_filename(f"{comp_name} - {home} vs {away}.csv")
+        match_time_utc = parse_utc_time(match.get("0", ""))
+        local_time_str = match_time_utc.astimezone().strftime("%Y%m%d_%H%M")
+        filename = sanitize_filename(f"{local_time_str}_{comp_name} - {home} vs {away}.csv")
         filepath = os.path.join("matches", filename)
 
         time_label = get_time_label(match.get("0"), match)
